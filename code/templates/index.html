@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Predictive Maintenance Monitor</title>
+    <style>
+        body { font-family: Arial, sans-serif; background-color: #1e1e1e; color: #fff; display: flex; justify-content: center; padding: 40px; }
+        .container { background: #2d2d2d; padding: 30px; border-radius: 10px; box-shadow: 0 8px 25px rgba(0,0,0,0.8); width: 450px; }
+        h2 { text-align: center; color: #4da6ff; margin-bottom: 5px; font-weight: normal; letter-spacing: 1px;}
+        
+        /* The CSS for the industrial monitor screen */
+        .monitor-screen { background: #000; border: 2px solid #555; border-radius: 5px; margin: 20px 0; padding: 15px; text-align: center; }
+        canvas { width: 100%; height: 120px; background-color: #0a0a0a; border-radius: 3px; }
+        
+        label { font-weight: bold; margin-top: 15px; display: block; font-size: 13px; color: #aaa; text-transform: uppercase;}
+        input, select { width: 100%; padding: 12px; margin-top: 5px; background: #111; border: 1px solid #444; color: #00ffcc; border-radius: 4px; box-sizing: border-box; font-family: monospace; font-size: 16px;}
+        input:focus, select:focus { outline: none; border-color: #4da6ff; }
+        
+        .btn { width: 100%; background-color: #4da6ff; color: #000; padding: 14px; margin-top: 25px; border: none; border-radius: 4px; cursor: pointer; font-size: 16px; font-weight: bold; text-transform: uppercase; transition: background 0.3s; }
+        .btn:hover { background-color: #3388dd; }
+        
+        .result { margin-top: 15px; font-size: 18px; font-weight: bold; text-align: center; text-transform: uppercase; letter-spacing: 2px;}
+        .normal { color: #5cb85c; }
+        .failure { color: #d9534f; animation: blink 1s linear infinite; }
+        @keyframes blink { 50% { opacity: 0; } }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2>Sensor Telemetry</h2>
+    
+    <!-- Live Waveform Monitor -->
+    <div class="monitor-screen">
+        <canvas id="sensorWave" width="400" height="120"></canvas>
+        <div class="result {% if 'Failure' in prediction_text %}failure{% else %}normal{% endif %}">
+            {{ prediction_text if prediction_text else "AWAITING SENSOR DATA" }}
+        </div>
+    </div>
+
+    <!-- Data Input Form -->
+    <form action="/predict" method="post">
+        <label>Machine Quality Type:</label>
+        <select name="type" required>
+            <option value="L">Low (L)</option>
+            <option value="M" selected>Medium (M)</option>
+            <option value="H">High (H)</option>
+        </select>
+        <label>Air Temperature [K]:</label>
+        <input type="number" step="0.1" name="air_temp" required placeholder="e.g. 298.1">
+        <label>Process Temperature [K]:</label>
+        <input type="number" step="0.1" name="process_temp" required placeholder="e.g. 308.6">
+        <label>Rotational Speed [rpm]:</label>
+        <input type="number" name="rotational_speed" required placeholder="e.g. 1551">
+        <label>Torque [Nm]:</label>
+        <input type="number" step="0.1" name="torque" required placeholder="e.g. 42.8">
+        <label>Tool Wear [min]:</label>
+        <input type="number" name="tool_wear" required placeholder="e.g. 0">
+        <button type="submit" class="btn">Process Telemetry</button>
+    </form>
+</div>
+
+<!-- JavaScript to power the dynamic graph -->
+<script>
+    const canvas = document.getElementById('sensorWave');
+    const ctx = canvas.getContext('2d');
+    let time = 0;
+    
+    // Check the server response to determine the machine's state
+    const statusText = "{{ prediction_text }}";
+    const isFailure = statusText.includes("Failure");
+    
+    function drawWave() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        
+        // 1. Draw the dashed threshold limits (the "ti")
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+        ctx.setLineDash([5, 5]);
+        ctx.beginPath();
+        ctx.moveTo(0, 20); ctx.lineTo(canvas.width, 20);   // Upper Threshold
+        ctx.moveTo(0, 100); ctx.lineTo(canvas.width, 100); // Lower Threshold
+        ctx.stroke();
+        ctx.setLineDash([]);
+        
+        // 2. Draw the live sensor wave
+        ctx.beginPath();
+        for (let i = 0; i < canvas.width; i++) {
+            let y = 60; // Center baseline
+            
+            if (isFailure) {
+                // Failure State: Erratic amplitude crossing the thresholds
+                y += Math.sin(i * 0.15 + time) * 45 * Math.random();
+                ctx.strokeStyle = '#d9534f'; // Danger Red
+                ctx.lineWidth = 3;
+            } else if (statusText === "") {
+                // Idle State: Small heartbeat before first prediction
+                y += Math.sin(i * 0.05 + time) * 2;
+                ctx.strokeStyle = '#555'; 
+                ctx.lineWidth = 2;
+            } else {
+                // Normal State: Smooth sine wave staying safely between thresholds
+                y += Math.sin(i * 0.05 + time) * 15;
+                ctx.strokeStyle = '#5cb85c'; // Safe Green
+                ctx.lineWidth = 2;
+            }
+            
+            if (i === 0) ctx.moveTo(i, y);
+            else ctx.lineTo(i, y);
+        }
+        ctx.stroke();
+        
+        // 3. Animate the wave moving forward
+        time += isFailure ? 0.4 : 0.05; // Fails fast, idles slow
+        requestAnimationFrame(drawWave);
+    }
+    
+    // Start the animation loop
+    drawWave();
+</script>
+</body>
+</html>
